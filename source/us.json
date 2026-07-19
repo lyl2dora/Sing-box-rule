@@ -1,0 +1,14 @@
+{
+  "version": 5,
+  "rules": [
+    {
+      "domain_suffix": [
+        ".capitalone.comm",
+        ".syf.com",
+        ".synchronybank.com",
+        ".api.github.com",
+        "auth.docker.io"
+      ]
+    }
+  ]
+}
