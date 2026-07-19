@@ -29,7 +29,9 @@ permissions:
   contents: write
 
 concurrency:
-  group: compile-rulesets
+  # Shared with convert-surge.yml so the two workflows never push to binary/
+  # at the same time (they'd otherwise race and reject each other's push).
+  group: rulesets-binary
   cancel-in-progress: false
 
 env:
@@ -58,16 +60,10 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
           mkdir -p binary
-
-          # Prune orphan .srs whose source .json no longer exists.
-          for srs in binary/*.srs; do
-            base="$(basename "$srs" .srs)"
-            if [ ! -f "source/${base}.json" ]; then
-              echo "prune orphan ${srs} (source deleted)"
-              rm -f "$srs"
-            fi
-          done
-
+          # No orphan-prune here: binary/ is shared with convert-surge.yml, so
+          # this job must not delete .srs it does not own (a name-based prune
+          # would wipe the Surge-generated ones). Stale .srs from a deleted
+          # source/*.json are removed by hand.
           count=0
           for json in source/*.json; do
             base="$(basename "$json" .json)"

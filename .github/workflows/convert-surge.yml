@@ -1,0 +1,90 @@
+name: Convert Surge rule-sets
+
+# list.txt is a manifest of URLs, each pointing to a Surge-format .list rule-set.
+# This workflow downloads each, converts Surge syntax -> sing-box source JSON
+# (.github/scripts/surge2singbox.py), then compiles to binary/<name>.srs where
+# <name> is the .list basename (WeChat.list -> WeChat.srs).
+#
+# This is a DIFFERENT job from compile-rulesets.yml: that one compiles
+# hand-written sing-box JSON in source/; this one bridges a foreign rule syntax
+# (Surge and sing-box differ semantically — see the converter's header). Both
+# write binary/ and share the 'rulesets-binary' concurrency group so they never
+# push simultaneously.
+#
+# Triggers: push to list.txt / every 24h / manual.
+# The sing-box compiler is pinned to q-core's vendored generation — bump
+# SING_BOX_VERSION in lockstep when q-core re-pins (same as compile-rulesets.yml).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'list.txt'
+  schedule:
+    - cron: '30 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rulesets-binary
+  cancel-in-progress: false
+
+env:
+  SING_BOX_VERSION: v1.14.0-alpha.43
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Fetch pinned sing-box (prebuilt release)
+        run: |
+          set -euo pipefail
+          ver="${SING_BOX_VERSION#v}"
+          url="https://github.com/SagerNet/sing-box/releases/download/${SING_BOX_VERSION}/sing-box-${ver}-linux-amd64.tar.gz"
+          echo "downloading ${url}"
+          curl -fsSL "$url" -o /tmp/sing-box.tar.gz
+          tar -xzf /tmp/sing-box.tar.gz -C /tmp
+          sudo install -m 0755 "/tmp/sing-box-${ver}-linux-amd64/sing-box" /usr/local/bin/sing-box
+          sing-box version
+
+      - name: Convert Surge lists -> sing-box source
+        run: |
+          set -euo pipefail
+          python .github/scripts/surge2singbox.py list.txt /tmp/converted
+
+      - name: Compile source -> binary
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          mkdir -p binary
+          count=0
+          for json in /tmp/converted/*.json; do
+            name="$(basename "$json" .json)"
+            echo "compile ${name}"
+            sing-box rule-set compile "$json" -o "binary/${name}.srs"
+            count=$((count + 1))
+          done
+          echo "compiled ${count} Surge rule-set(s)"
+
+      - name: Commit binaries
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A binary
+          if git diff --cached --quiet; then
+            echo "no rule-set changes to commit"
+            exit 0
+          fi
+          git commit -m "chore(binary): convert Surge rule-sets (sing-box ${SING_BOX_VERSION}) [skip ci]"
+          git push
