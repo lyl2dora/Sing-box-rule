@@ -3,6 +3,10 @@ name: Compile rule-sets
 # source/*.json (source format) -> binary/*.srs (binary format), compiled with a
 # pinned sing-box so the output stays byte-compatible with the q-core daemon.
 #
+# Uses the PREBUILT sing-box release binary (no go build) — the compiler is a
+# fixed tool, not something we develop, so downloading the release is faster
+# than compiling from source.
+#
 # Triggers:
 #   - push to source/*.json  (new file or content change)
 #   - every 24h (schedule)
@@ -38,15 +42,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.24.7'
-
-      - name: Install pinned sing-box compiler
+      - name: Fetch pinned sing-box (prebuilt release)
         run: |
           set -euo pipefail
-          go install "github.com/sagernet/sing-box/cmd/sing-box@${SING_BOX_VERSION}"
+          ver="${SING_BOX_VERSION#v}"
+          url="https://github.com/SagerNet/sing-box/releases/download/${SING_BOX_VERSION}/sing-box-${ver}-linux-amd64.tar.gz"
+          echo "downloading ${url}"
+          curl -fsSL "$url" -o /tmp/sing-box.tar.gz
+          tar -xzf /tmp/sing-box.tar.gz -C /tmp
+          sudo install -m 0755 "/tmp/sing-box-${ver}-linux-amd64/sing-box" /usr/local/bin/sing-box
           sing-box version
 
       - name: Compile source -> binary
