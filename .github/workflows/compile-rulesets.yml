@@ -1,0 +1,88 @@
+name: Compile rule-sets
+
+# source/*.json (source format) -> binary/*.srs (binary format), compiled with a
+# pinned sing-box so the output stays byte-compatible with the q-core daemon.
+#
+# Triggers:
+#   - push to source/*.json  (new file or content change)
+#   - every 24h (schedule)
+#   - manual (workflow_dispatch)
+#
+# The pinned compiler MUST track whatever sing-box generation q-core vendors.
+# q-core currently pins sing-box 1.14.0-alpha.43 (rule-set binary format v5).
+# When q-core re-pins, bump SING_BOX_VERSION here in lockstep.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'source/**.json'
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: compile-rulesets
+  cancel-in-progress: false
+
+env:
+  SING_BOX_VERSION: v1.14.0-alpha.43
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.7'
+
+      - name: Install pinned sing-box compiler
+        run: |
+          set -euo pipefail
+          go install "github.com/sagernet/sing-box/cmd/sing-box@${SING_BOX_VERSION}"
+          sing-box version
+
+      - name: Compile source -> binary
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          mkdir -p binary
+
+          # Prune orphan .srs whose source .json no longer exists.
+          for srs in binary/*.srs; do
+            base="$(basename "$srs" .srs)"
+            if [ ! -f "source/${base}.json" ]; then
+              echo "prune orphan ${srs} (source deleted)"
+              rm -f "$srs"
+            fi
+          done
+
+          count=0
+          for json in source/*.json; do
+            base="$(basename "$json" .json)"
+            out="binary/${base}.srs"
+            echo "compile ${json} -> ${out}"
+            sing-box rule-set compile "$json" -o "$out"
+            count=$((count + 1))
+          done
+          echo "compiled ${count} rule-set(s)"
+
+      - name: Commit binaries
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A binary
+          if git diff --cached --quiet; then
+            echo "no rule-set changes to commit"
+            exit 0
+          fi
+          git commit -m "chore(binary): recompile rule-sets (sing-box ${SING_BOX_VERSION}) [skip ci]"
+          git push
