@@ -3,10 +3,10 @@
   "rules": [
     {
       "domain_suffix": [
-        ".capitalone.comm",
-        ".syf.com",
-        ".synchronybank.com",
-        ".api.github.com",
+        "capitalone.com",
+        "syf.com",
+        "synchronybank.com",
+        "api.github.com",
         "auth.docker.io",
         "aquacomputer.de"
       ]
