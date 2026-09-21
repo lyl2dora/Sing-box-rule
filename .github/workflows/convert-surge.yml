@@ -20,6 +20,10 @@ on:
     branches: [main]
     paths:
       - 'list.txt'
+      # The converter itself changes what the same manifest produces (e.g. the
+      # IP-ASN expansion), so a script edit must rebuild binary/ too.
+      - '.github/scripts/surge2singbox.py'
+      - '.github/workflows/convert-surge.yml'
   schedule:
     - cron: '30 0 * * *'
   workflow_dispatch:
