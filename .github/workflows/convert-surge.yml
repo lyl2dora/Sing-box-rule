@@ -1,17 +1,24 @@
-name: Convert Surge rule-sets
+name: Build external rule-sets
 
-# list.txt is a manifest of URLs, each pointing to a Surge-format .list rule-set.
-# This workflow downloads each, converts Surge syntax -> sing-box source JSON
-# (.github/scripts/surge2singbox.py), then compiles to binary/<name>.srs where
-# <name> is the .list basename (WeChat.list -> WeChat.srs).
+# Builds binary/ from sources that are NOT hand-written sing-box JSON:
+#
+#   list.txt  manifest of URLs, each a Surge-format .list. Downloaded and
+#             converted to sing-box source JSON by surge2singbox.py, then
+#             compiled to binary/<name>.srs where <name> is the .list basename
+#             (WeChat.list -> WeChat.srs).
+#   asn.txt   manifest of ASN sets. sing-box has no ip_asn rule item, so
+#             asn2singbox.py resolves each ASN to its announced prefixes and
+#             emits binary/<output-name>.srs. Both manifests land in the same
+#             staging dir, so the compile step below needs no special-casing.
+#
+# Everything here is regenerated from an upstream that moves on its own, which
+# is why the daily schedule matters: a frozen prefix list goes stale silently.
 #
 # This is a DIFFERENT job from compile-rulesets.yml: that one compiles
-# hand-written sing-box JSON in source/; this one bridges a foreign rule syntax
-# (Surge and sing-box differ semantically — see the converter's header). Both
-# write binary/ and share the 'rulesets-binary' concurrency group so they never
-# push simultaneously.
+# hand-written sing-box JSON in source/. Both write binary/ and share the
+# 'rulesets-binary' concurrency group so they never push simultaneously.
 #
-# Triggers: push to list.txt / every 24h / manual.
+# Triggers: push to either manifest or either script / every 24h / manual.
 # The sing-box compiler is pinned to q-core's vendored generation — bump
 # SING_BOX_VERSION in lockstep when q-core re-pins (same as compile-rulesets.yml).
 
@@ -20,9 +27,11 @@ on:
     branches: [main]
     paths:
       - 'list.txt'
-      # The converter itself changes what the same manifest produces (e.g. the
+      - 'asn.txt'
+      # The scripts themselves change what the same manifest produces (e.g. the
       # IP-ASN expansion), so a script edit must rebuild binary/ too.
       - '.github/scripts/surge2singbox.py'
+      - '.github/scripts/asn2singbox.py'
       - '.github/workflows/convert-surge.yml'
   schedule:
     - cron: '30 0 * * *'
@@ -65,6 +74,12 @@ jobs:
         run: |
           set -euo pipefail
           python .github/scripts/surge2singbox.py list.txt /tmp/converted
+
+      - name: Expand ASN manifest -> sing-box source
+        run: |
+          set -euo pipefail
+          # Same staging dir as the converter; the compile step picks both up.
+          python .github/scripts/asn2singbox.py asn.txt /tmp/converted
 
       - name: Compile source -> binary
         run: |

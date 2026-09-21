@@ -1,0 +1,11 @@
+# ASN manifest: <output-name>: <ASN> [<ASN> ...]
+# Expanded to binary/<output-name>.srs by .github/scripts/asn2singbox.py.
+# sing-box has no ip_asn rule item, so these are resolved to prefixes at build
+# time and refreshed on the daily schedule — do not paste prefixes by hand.
+
+# WeChat's mmtls short-link servers are reached by hardcoded IP literal, so the
+# Host header carries no domain and sniffing yields nothing to match on; only
+# the IP identifies them. AS132203 is Tencent's own international space (also
+# what upstream WeChat.list asks for via IP-ASN); AS139341 is Aceville, its
+# Singapore entity, which upstream does not list.
+Tencent-intl: 132203 139341
