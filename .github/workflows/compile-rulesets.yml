@@ -21,6 +21,7 @@ on:
     branches: [main]
     paths:
       - 'source/**.json'
+      - '.github/workflows/compile-rulesets.yml'
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
@@ -85,4 +86,10 @@ jobs:
             exit 0
           fi
           git commit -m "chore(binary): recompile rule-sets (sing-box ${SING_BOX_VERSION}) [skip ci]"
+          # The sibling workflow may have pushed to binary/ while this run sat in
+          # the shared concurrency queue. actions/checkout pins us to the SHA
+          # that triggered the run, not to main's tip, so rebase before pushing
+          # or the push is rejected as non-fast-forward. The two jobs own
+          # disjoint .srs files, so this never conflicts.
+          git pull --rebase origin main
           git push
