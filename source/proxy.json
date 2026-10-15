@@ -3,7 +3,9 @@
   "rules": [
     {
       "domain_suffix": [
-        "gstatic.com"
+        "gstatic.com",
+        "googleapis.com",
+        "dl.google.com"
       ]
     }
   ]
