@@ -44,6 +44,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.error
 import urllib.request
 
 RULESET_VERSION = 3  # compile downgrades to the minimal version the rules need
@@ -72,10 +74,24 @@ ASN_SRS_URL = "https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/sing/a
 _asn_cache = {}
 
 
-def http_get(url, timeout=30):
+def http_get(url, timeout=30, attempts=3):
+    # GitHub raw endpoints occasionally return 5xx/time out; retry those, but
+    # fail fast on other 4xx (e.g. a 404 from a wrong URL in the manifest).
     req = urllib.request.Request(url, headers={"User-Agent": "surge2singbox"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read()
+    for i in range(attempts):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read()
+        except urllib.error.HTTPError as e:
+            if (e.code < 500 and e.code != 429) or i == attempts - 1:
+                raise
+            err = e
+        except (urllib.error.URLError, TimeoutError) as e:
+            if i == attempts - 1:
+                raise
+            err = e
+        print("  retry %d/%d after: %s" % (i + 1, attempts - 1, err), file=sys.stderr)
+        time.sleep(5 * (i + 1))
 
 
 def fetch_asn_cidrs(asn):
